@@ -25,6 +25,8 @@ FilterOnePole LowpassFilter(LOWPASS, filterFrequency);
 double pidAInput, pidAOutput, pidASetpoint;
 double KpA = 1, KiA=0, KdA =0;
 PID PidA(&pidAInput, &pidAOutput, &pidASetpoint, KpA, KiA, KdA, DIRECT);
+
+
 void initialisePidA(){
   pidASetpoint = 0;
   PidA.SetOutputLimits(-2000, 2000);
@@ -77,6 +79,10 @@ void initialiseButton(){
 
 
 void setup() {
+
+  while(!isButtonPressed()){
+    
+  }
   openSerialConnection();
   initialisePidA();
   initialisePidB();
@@ -137,16 +143,23 @@ double getGainMultiplier(){
   return (reading/(5))*-1 + 1;
 }
 
+bool isButtonPressed(){
+    int val = digitalRead(PUSH_BUTTON_PIN);
+    bool isPressed = val == 0;
+    return isPressed;
+}
+
 double getOverallGain(){
-  int val = digitalRead(PUSH_BUTTON_PIN);
-  bool isPressed = val == 0;
-  if(isPressed){
+  if(isButtonPressed()){
     return 1;
   }
   else{
     return 0;
   }
 }
+
+
+
 
 
 double voltsToMilliVolts(double volts){
@@ -282,8 +295,13 @@ void sendDemandVoltageToDACs(){
 //  MCPDAC_B.setVoltage(CHANNEL_B,demand); //Red
 }
 
+void(* resetFunc) (void) = 0;
 
 void loop() {
+
+  if(!isButtonPressed()){
+    resetFunc();
+  }
   processNewSensorSignals();
   convertDisplacementsToXandY();
   updatePids();
