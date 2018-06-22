@@ -2,30 +2,34 @@
 #include <PID_v1.h>
 #include <MCPDAC.h>
 
+// Initialise Pins
+// THESE PIN VALUES NEED TO BE AMENDED FOR THE BOX
 const int SENSOR_A_PIN = A5;
 const int SENSOR_B_PIN = A4;
-const int POTENTIOMETER_PIN = A3;
 const int PUSH_BUTTON_PIN = 8;
 
+// Initialise Global Demand Variables
 double  brownDemand;
 double yellowDemand;
 double blueDemand;
 double redDemand;
 
+// Initialise Global Coodinate Variables
 double y;
 double x;
 
-double filterFrequency = 80;
-
+// Initialise Global Senor Output Value Variables
 float sensorAOut;
 float sensorBOut;
 
+//Initialise the Filtering Library
 FilterOnePole LowpassFilter(LOWPASS, filterFrequency); 
+double filterFrequency = 80;
 
+// Handle PidA Class Setup and Initialisation
 double pidAInput, pidAOutput, pidASetpoint;
 double KpA = 1, KiA=0, KdA =0;
 PID PidA(&pidAInput, &pidAOutput, &pidASetpoint, KpA, KiA, KdA, DIRECT);
-
 
 void initialisePidA(){
   pidASetpoint = 0;
@@ -34,22 +38,19 @@ void initialisePidA(){
   PidA.SetMode(AUTOMATIC);
 }
 
+// Handle PidB Class Setup and Initialisation
 double pidBInput, pidBOutput, pidBSetpoint;
 double KpB = 1, KiB=0, KdB =0;
 PID PidB(&pidBInput, &pidBOutput, &pidBSetpoint, KpB, KiB, KdB, DIRECT);
 
 void initialisePidB(){
-  
   pidBSetpoint = 0;
   PidB.SetOutputLimits(-2000, 2000);
   PidB.SetSampleTime(2);
   PidB.SetMode(AUTOMATIC);
 }
 
-const int DAC_A1 = A0;
-const int DAC_A2 = A1;
-const int DAC_B1 = A2;
-const int DAC_B2 = A3;
+// Define which Pins are the Slave Select Pins for DAC A and DAC B
 
 const int SS_PIN_A = 10;
 const int SS_PIN_B = 9;
@@ -74,15 +75,18 @@ void initialiseButton(){
   pinMode(PUSH_BUTTON_PIN, INPUT);
 }
 
-
-
-
+bool isButtonPressed(){
+    int val = digitalRead(PUSH_BUTTON_PIN);
+    bool isPressed = val == 0;
+    return isPressed;
+}
 
 void setup() {
-
+  //When First Turned on This while loop should stall the program until the button is pressed
   while(!isButtonPressed()){
     
   }
+  // Call up the setup and initialisation functions defined above
   openSerialConnection();
   initialisePidA();
   initialisePidB();
@@ -91,6 +95,7 @@ void setup() {
 }
 
 void updatePids(){
+  // Every Loop of the arduino main Loop function the PIDs will be updated
   pidAInput = y;
   pidBInput = x;
   double p = 1325;
@@ -129,24 +134,9 @@ void convertDisplacementsToXandY(){
    y = sin(adjustmentAngle)*magnitude;
 }
 
-
-
 void processNewSensorSignals(){
   sensorAOut = analyseSensorInput(analogRead(SENSOR_A_PIN));
   sensorBOut = analyseSensorInput(analogRead(SENSOR_B_PIN));
-}
-
-double getGainMultiplier(){
-    double reading = analogToVolts(analogRead(POTENTIOMETER_PIN));
-//    Serial.print(reading);
-//    Serial.print(" ");
-  return (reading/(5))*-1 + 1;
-}
-
-bool isButtonPressed(){
-    int val = digitalRead(PUSH_BUTTON_PIN);
-    bool isPressed = val == 0;
-    return isPressed;
 }
 
 double getOverallGain(){
@@ -158,14 +148,6 @@ double getOverallGain(){
   }
 }
 
-
-
-
-
-double voltsToMilliVolts(double volts){
- return volts*1000.00; 
-}
-
 double computeControlDemandA(){
   return (pidBOutput - pidAOutput )/sqrt(2);
 }
@@ -174,30 +156,7 @@ double computeControlDemandB(){
    return (pidAOutput + pidBOutput)/(-1*sqrt(2));
 }
 
-void checkLoopSpeed(){
-    
-  static int counter = 0;
-  int demand = 0;
-  if(counter%2==0){
-   demand = 4000;
-  }else{
-    demand = 0;
-  }
-  counter += 1;
-  MCPDAC_A.setVoltage(CHANNEL_A,demand); //Amplifier 6
-}
-
 void sendDemandVoltageToDACs(){
-//  checkLoopSpeed();
-
-  static int counter = 0;
-  int demand = 0;
-  if(counter%2==0){
-   demand = 4000;
-  }else{
-    demand = 0;
-  }
-  counter += 1;
   
   double biasDemand = 2000;
   double lowerBiasDemand = biasDemand;
@@ -205,18 +164,8 @@ void sendDemandVoltageToDACs(){
   
   double controlDemandA = computeControlDemandA();
   double controlDemandB = computeControlDemandB();
-//  const int threshold = 1280;
-//  double controlDemandA = getGainMultiplier()*(1750-threshold)+(threshold);
-//    double controlDemandA = getGainMultiplier()*4000-2000;
-
-//  double controlDemandB = getGainMultiplier()*4000-2000;
-//  Serial.print(controlDemandA);
-//  Serial.print(" ");
-//  Serial.print(controlDemandB);
-//  Serial.print(" ");
 
   double overallGain = getOverallGain();
-//  Serial.print(overallGain);
   double brownBias = 1300;
   double yellowBias = 2000;
   double blueBias = 1350;
@@ -226,6 +175,8 @@ void sendDemandVoltageToDACs(){
   blueDemand = (blueBias + controlDemandA); //Pair B Top
   redDemand = (redBias - controlDemandA); //Pair B Bottom
 
+
+  // These if statements limit the demand being send to the DACs between 0 and 4.095mV
   if(brownDemand<0){
     brownDemand = 0;
   }
@@ -253,48 +204,15 @@ void sendDemandVoltageToDACs(){
     redDemand = 4095;
   }
 
-  
-  
   double amplifierGain = 2.5;
-//
-//  Serial.print(x);
-//  Serial.print(" ");
-//   Serial.print(y);
-//  Serial.print(" ");
-  
-//  Serial.print ((brownDemand/1000.00) *amplifierGain*overallGain);
-//  Serial.print(" ");
-//  Serial.print (yellowDemand/1000.00 * amplifierGain*overallGain);
-//  Serial.print(" ");
-//  Serial.print (blueDemand/1000.00 * amplifierGain*overallGain);
-//  Serial.print(" ");
-//  Serial.print (redDemand/ 1000.00 * amplifierGain*overallGain);
-//  Serial.print(" ");
-
-//  Serial.print(brownDemand);
-//  Serial.print(" ");
-//  Serial.print (blueDemand);
-//  Serial.print(" ");
-//  Serial.print( yellowDemand);
-//  Serial.print(" ");
-//  Serial.print (redDemand);
-//  Serial.print(" ");
-//    Serial.print(pidAOutput);
-//  Serial.print(" ");
-//    Serial.print(pidBOutput);
-//  Serial.print(" ");
 
   MCPDAC_A.setVoltage(CHANNEL_A,brownDemand*overallGain); //Amplifier 6
   MCPDAC_A.setVoltage(CHANNEL_B,blueDemand*overallGain); //Amplifier 7
   MCPDAC_B.setVoltage(CHANNEL_A,yellowDemand*overallGain); //Amplifier 8
   MCPDAC_B.setVoltage(CHANNEL_B,redDemand*overallGain); //Amplifier 9
-
-//  MCPDAC_A.setVoltage(CHANNEL_A,0); //Brown
-//  MCPDAC_A.setVoltage(CHANNEL_B, 0); //Blue
-//  MCPDAC_B.setVoltage(CHANNEL_A,0); //Yellow
-//  MCPDAC_B.setVoltage(CHANNEL_B,demand); //Red
 }
 
+// Define the Reset Function to point towards 
 void(* resetFunc) (void) = 0;
 
 void loop() {
@@ -306,7 +224,8 @@ void loop() {
   convertDisplacementsToXandY();
   updatePids();
   sendDemandVoltageToDACs();
-  printVariables();
+  // If you want the arduino to use Serial to output measurable signals then uncomment the next line 
+  // printVariables();
 }
 
 void printVariables(){
@@ -314,29 +233,7 @@ void printVariables(){
   printTimeElapsed();
   printPidAValues();
   printPidBValues();
-  printDacOutputs();
   endPrintSequence();
-}
-
-
-void printDacOutputs(){
-  float dacA1Out = analogRead(DAC_A1);
-  float dacA2Out = analogRead(DAC_A2);
-  float dacB1Out = analogRead(DAC_B1);
-  float dacB2Out = analogRead(DAC_B2);
-
-  float dacA1Voltage = analogToVolts(dacA1Out); 
-  float dacA2Voltage = analogToVolts(dacA2Out); 
-  float dacB1Voltage = analogToVolts(dacB1Out); 
-  float dacB2Voltage = analogToVolts(dacB2Out); 
-  Serial.print(dacA1Voltage);
-  Serial.print(" ");
-  Serial.print(dacA2Voltage);
-  Serial.print(" ");
-  Serial.print(dacB1Voltage);
-  Serial.print(" ");
-  Serial.print(dacB2Voltage);
-  Serial.print(" ");
 }
 
 void printSensorReadings(){
@@ -346,6 +243,7 @@ void printSensorReadings(){
   Serial.print(" ");
 
 }
+
 void printPidBValues(){
 
   Serial.print(PidB.GetKp());
